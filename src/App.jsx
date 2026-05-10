@@ -176,7 +176,7 @@ function App() {
 
         setQueryState('ready')
       } catch (error) {
-        if (controller.signal.aborted || error.name === 'AbortError') return
+        if (controller.signal.aborted) return
         console.error(error)
         setListings([])
         setMarketInfo(null)

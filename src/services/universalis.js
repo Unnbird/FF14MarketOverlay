@@ -1,7 +1,14 @@
-const UNIVERSALIS_BASE_URL = 'https://universalis.app/api/v2'
+import { fetchWithTimeout } from './request'
 
-async function fetchJson(url, signal) {
-  const response = await fetch(url, { signal })
+const UNIVERSALIS_BASE_URL = 'https://universalis.app/api/v2'
+const UNIVERSALIS_TIMEOUT_MS = 12_000
+
+async function fetchJson(url, options = {}) {
+  const response = await fetchWithTimeout(url, {
+    signal: options.signal,
+    timeoutMs: options.timeoutMs ?? UNIVERSALIS_TIMEOUT_MS,
+    timeoutMessage: 'Universalis 查詢逾時，請稍後再試',
+  })
 
   if (response.status === 404) return null
   if (!response.ok) {
@@ -13,8 +20,8 @@ async function fetchJson(url, signal) {
 
 export async function loadServerOptions(signal = null) {
   const [datacenters, worlds] = await Promise.all([
-    fetchJson(`${UNIVERSALIS_BASE_URL}/data-centers`, signal),
-    fetchJson(`${UNIVERSALIS_BASE_URL}/worlds`, signal),
+    fetchJson(`${UNIVERSALIS_BASE_URL}/data-centers`, { signal }),
+    fetchJson(`${UNIVERSALIS_BASE_URL}/worlds`, { signal }),
   ])
 
   const worldNames = new Map()
@@ -65,7 +72,7 @@ export async function getMarketData(target, itemId, options = {}) {
   if (options.hq) params.set('hq', 'true')
 
   const url = `${UNIVERSALIS_BASE_URL}/${encodeURIComponent(target)}/${itemId}?${params}`
-  return fetchJson(url, options.signal)
+  return fetchJson(url, { signal: options.signal })
 }
 
 export function normalizeMarketListings(data, itemName, targetLabel, limit) {

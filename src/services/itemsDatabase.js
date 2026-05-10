@@ -1,6 +1,8 @@
 import { decode } from '@msgpack/msgpack'
+import { createAbortError, fetchWithTimeout, raceWithAbort } from './request'
 
 const DATA_BASE = `${(import.meta.env.BASE_URL || '/').replace(/\/$/, '')}/data`
+const ITEM_DATA_TIMEOUT_MS = 8_000
 
 let twItemsCache = null
 let twItemsLoadPromise = null
@@ -20,20 +22,26 @@ export function normalizeItemName(value) {
 
 async function loadTwItems(signal) {
   if (twItemsCache) return twItemsCache
-  if (twItemsLoadPromise) return twItemsLoadPromise
+  if (!twItemsLoadPromise) {
+    twItemsLoadPromise = (async () => {
+      const response = await fetchWithTimeout(`${DATA_BASE}/tw-items.msgpack`, {
+        timeoutMs: ITEM_DATA_TIMEOUT_MS,
+        timeoutMessage: '物品資料載入逾時，請稍後再試',
+      })
+      if (!response.ok) {
+        throw new Error(`物品資料載入失敗 (${response.status})`)
+      }
 
-  twItemsLoadPromise = (async () => {
-    const response = await fetch(`${DATA_BASE}/tw-items.msgpack`, { signal })
-    if (!response.ok) {
-      throw new Error(`物品資料載入失敗 (${response.status})`)
-    }
+      const buffer = await response.arrayBuffer()
+      twItemsCache = decode(new Uint8Array(buffer))
+      return twItemsCache
+    })().catch((error) => {
+      twItemsLoadPromise = null
+      throw error
+    })
+  }
 
-    const buffer = await response.arrayBuffer()
-    twItemsCache = decode(new Uint8Array(buffer))
-    return twItemsCache
-  })()
-
-  return twItemsLoadPromise
+  return raceWithAbort(twItemsLoadPromise, signal)
 }
 
 function buildTwNameIndex(itemsMap) {
@@ -72,7 +80,7 @@ export async function searchTwItemCandidates(itemName, limit = 6, signal = null)
   const candidates = []
 
   for (const [itemId, item] of Object.entries(itemsMap)) {
-    if (signal?.aborted) throw new DOMException('Request aborted', 'AbortError')
+    if (signal?.aborted) throw createAbortError()
 
     const name = item?.tw
     const candidateName = normalizeItemName(name)
