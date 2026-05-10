@@ -20,6 +20,7 @@ FF14 用的 ACT OverlayPlugin 市場查詢 Overlay。
 2. 點擊左下角的 **New** 按鈕，建立新 Overlay
 3. 在彈出視窗中：
    - **Name**：填入任意名稱，例如 `Market`
+   - **Preset**：選擇 `Custom`
    - **Type**：選擇 `MiniParse`
    - 點擊 **OK**
 4. 在左側清單選取剛建立的 Overlay（例如 `Market`）
@@ -41,7 +42,7 @@ dist/index.html
 1. 確認 Overlay 已顯示且狀態顯示為已連線
 2. 在遊戲中開啟道具欄，對任意物品按右鍵，選擇「確認持有數量」
 3. Overlay 會自動偵測物品名稱並查詢 Universalis 市場資料
-4. 可在 Overlay 右上角切換查詢目標（伺服器 / DC / 全區域）及 HQ 篩選
+4. 可在 Overlay 右上角切換HQ篩選
 
 ## 開發
 
