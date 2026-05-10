@@ -100,3 +100,29 @@ export function normalizeMarketListings(data, itemName, targetLabel, limit) {
     .sort((left, right) => left.pricePerUnit - right.pricePerUnit)
     .slice(0, limit)
 }
+
+export function normalizeMarketHistory(data, itemName, targetLabel, limit) {
+  const fallbackWorldName = data?.worldName ?? data?.dcName ?? targetLabel
+
+  return (data?.recentHistory ?? [])
+    .map((entry, index) => {
+      const pricePerUnit = Number(entry.pricePerUnit ?? 0)
+      const quantity = Number(entry.quantity ?? 0)
+      const total = Number(entry.total ?? pricePerUnit * quantity)
+
+      return {
+        key: `${index}-${entry.timestamp ?? 'history'}-${entry.buyerName ?? 'buyer'}-${pricePerUnit}-${quantity}-${entry.hq ? 'hq' : 'nq'}`,
+        itemName,
+        pricePerUnit,
+        quantity,
+        total,
+        buyerName: entry.buyerName ?? '-',
+        worldName: entry.worldName ?? fallbackWorldName,
+        hq: Boolean(entry.hq),
+        timestamp: entry.timestamp ?? null,
+      }
+    })
+    .filter((entry) => entry.pricePerUnit > 0 && entry.quantity > 0)
+    .sort((left, right) => Number(right.timestamp ?? 0) - Number(left.timestamp ?? 0))
+    .slice(0, limit)
+}

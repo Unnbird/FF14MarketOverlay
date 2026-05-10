@@ -1,4 +1,14 @@
-import { Activity, LoaderCircle, Maximize2, Minimize2, RefreshCw, Wifi, WifiOff } from 'lucide-react'
+import {
+  Activity,
+  History,
+  List,
+  LoaderCircle,
+  Maximize2,
+  Minimize2,
+  RefreshCw,
+  Wifi,
+  WifiOff,
+} from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { findTwItemByName } from './services/itemsDatabase'
@@ -7,12 +17,19 @@ import {
   getDefaultTargetOption,
   getMarketData,
   loadServerOptions,
+  normalizeMarketHistory,
   normalizeMarketListings,
 } from './services/universalis'
 
 const TARGET_STORAGE_KEY = 'act-market-overlay-target'
 const HQ_ONLY_STORAGE_KEY = 'act-market-overlay-hq-only'
 const LIST_SIZE = 20
+const HISTORY_SIZE = 20
+
+const TABS = [
+  { id: 'listings', label: '在售列表', icon: List },
+  { id: 'history', label: '交易紀錄', icon: History },
+]
 
 const FALLBACK_TARGET = {
   value: 'dc:陸行鳥',
@@ -39,6 +56,16 @@ function formatMarketTime(value) {
   return date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })
 }
 
+function formatMarketDateTime(value) {
+  const date = getDateFromUniversalisTime(value)
+  if (!date) return '-'
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  return `${month}/${day} ${hour}:${minute}`
+}
+
 function getInitialHqOnly() {
   return localStorage.getItem(HQ_ONLY_STORAGE_KEY) === 'true'
 }
@@ -61,6 +88,8 @@ function App() {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [marketInfo, setMarketInfo] = useState(null)
   const [listings, setListings] = useState([])
+  const [history, setHistory] = useState([])
+  const [activeTab, setActiveTab] = useState('listings')
   const [queryState, setQueryState] = useState('idle')
   const [queryError, setQueryError] = useState(null)
 
@@ -141,6 +170,9 @@ function App() {
     async function loadMarketListings() {
       setQueryState('loading')
       setQueryError(null)
+      setMarketInfo(null)
+      setListings([])
+      setHistory([])
 
       try {
         const item = await findTwItemByName(detectedItem.name, controller.signal)
@@ -149,6 +181,7 @@ function App() {
         if (!item) {
           setMarketInfo(null)
           setListings([])
+          setHistory([])
           setQueryError(`找不到物品：${detectedItem.name}`)
           setQueryState('error')
           return
@@ -158,18 +191,20 @@ function App() {
 
         const data = await getMarketData(selectedTarget.apiTarget, item.id, {
           listings: LIST_SIZE,
-          entries: 0,
+          entries: HISTORY_SIZE,
           hq: hqOnly,
           signal: controller.signal,
         })
         if (controller.signal.aborted) return
 
         const nextListings = normalizeMarketListings(data, item.name, selectedTarget.label, LIST_SIZE)
+        const nextHistory = normalizeMarketHistory(data, item.name, selectedTarget.label, HISTORY_SIZE)
         setMarketInfo(data)
         setListings(nextListings)
+        setHistory(nextHistory)
 
-        if (!data || nextListings.length === 0) {
-          setQueryError('目前沒有在售列表')
+        if (!data || (nextListings.length === 0 && nextHistory.length === 0)) {
+          setQueryError('目前沒有市場資料')
           setQueryState('empty')
           return
         }
@@ -179,6 +214,7 @@ function App() {
         if (controller.signal.aborted) return
         console.error(error)
         setListings([])
+        setHistory([])
         setMarketInfo(null)
         setQueryError(error.message || '市場資料查詢失敗')
         setQueryState('error')
@@ -202,6 +238,7 @@ function App() {
   const isLoading = queryState === 'loading'
   const lastUploadTime = formatMarketTime(marketInfo?.lastUploadTime)
   const cheapestListing = listings[0]
+  const emptyMessage = activeTab === 'listings' ? '目前沒有在售列表' : '目前沒有交易紀錄'
 
   return (
     <main className={`overlay-shell${isCollapsed ? ' collapsed' : ''}`}>
@@ -271,15 +308,37 @@ function App() {
         </div>
       </section>
 
-      <section className="market-panel" aria-label="在售列表">
+      <section className="tab-bar" aria-label="市場資料類型" role="tablist">
+        {TABS.map((tab) => {
+          const TabIcon = tab.icon
+          const count = tab.id === 'listings' ? listings.length : history.length
+
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              className={`tab-button${activeTab === tab.id ? ' active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+              role="tab"
+              aria-selected={activeTab === tab.id}
+            >
+              <TabIcon size={15} />
+              <span>{tab.label}</span>
+              <strong>{count}</strong>
+            </button>
+          )
+        })}
+      </section>
+
+      <section className="market-panel" aria-label={activeTab === 'listings' ? '在售列表' : '交易紀錄'}>
         {isLoading ? (
           <div className="state-panel loading">
             <LoaderCircle size={24} className="spin" />
             <span>查詢中</span>
           </div>
-        ) : listings.length > 0 ? (
+        ) : activeTab === 'listings' && listings.length > 0 ? (
           <div className="table-wrap">
-            <table>
+            <table className="listings-table">
               <thead>
                 <tr>
                   <th>品質</th>
@@ -306,10 +365,43 @@ function App() {
               </tbody>
             </table>
           </div>
+        ) : activeTab === 'history' && history.length > 0 ? (
+          <div className="table-wrap">
+            <table className="history-table">
+              <thead>
+                <tr>
+                  <th>品質</th>
+                  <th>單價</th>
+                  <th>數量</th>
+                  <th>總價</th>
+                  <th>時間</th>
+                  <th>伺服器</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((entry) => (
+                  <tr key={entry.key} title={`${entry.worldName} / ${entry.buyerName}`}>
+                    <td>
+                      <span className={entry.hq ? 'quality hq' : 'quality'}>
+                        {entry.hq ? 'HQ' : 'NQ'}
+                      </span>
+                    </td>
+                    <td className="price">{formatGil(entry.pricePerUnit)}</td>
+                    <td>{formatGil(entry.quantity)}</td>
+                    <td className="total">{formatGil(entry.total)}</td>
+                    <td className="truncate" title={`${entry.worldName} / ${entry.buyerName}`}>
+                      {formatMarketDateTime(entry.timestamp)}
+                    </td>
+                    <td className="truncate" title={entry.worldName}>{entry.worldName}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <div className="state-panel">
             <Activity size={24} />
-            <span>{queryError ?? '等待物品'}</span>
+            <span>{queryError ?? (detectedItem ? emptyMessage : '等待物品')}</span>
           </div>
         )}
       </section>
